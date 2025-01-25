@@ -189,10 +189,11 @@ def apply_small_speed_change(input_video, output_video):
         "-i", input_video,
         "-filter_complex", f_str,
         "-map","[v]","-map","[a]",
-        "-c:v","libx264","-preset","veryfast","-profile:v","high",
-        "-crf","26",
+        "-c:v","libx264","-preset","ultrafast","-profile:v","high",
+        "-crf","28",
         "-pix_fmt","yuv420p",
         "-c:a","aac","-b:a","128k",
+        "-threads", "0",  # Use all available CPU threads
         output_video
     ]
     print(f"[Small Speed Change] => {sp}")
@@ -427,59 +428,55 @@ def check_and_fix_even(input_video, output_video):
 def generate_unique_video(input_video, output_video, orientation='horizontal', task=None):
     try:
         if task:
-            task.update_state(state='PROCESSING', meta={'status': 'Starting video speed change...'})
+            task.update_state(state='PROCESSING', meta={'status': 'Starting video processing...'})
         
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-            tmp_speed = tmp.name
-        apply_small_speed_change(input_video, tmp_speed)
-
-        current_input = tmp_speed
-
-        if random.random() < 0.5:
-            if task:
-                task.update_state(state='PROCESSING', meta={'status': 'Applying random noise...'})
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-                tmp_noise = tmp.name
-            apply_random_noise(current_input, tmp_noise)
-            current_input = tmp_noise
-
-        transformations = [
-            container_rewrap,
-            add_silent_subtitle,
-            add_dummy_chapter,
-            apply_random_metadata,
-            lambda inp, out: apply_resolution_change(inp, out, orientation),
-            apply_frame_rate_change,
-            apply_audio_codec_change,
-            apply_audio_sample_rate_change,
-            apply_small_rotation,
-            apply_mirror,
-            lambda inp, out: apply_padding(inp, out, orientation),
-            apply_text_overlay,
-            apply_pixelate,
-            apply_small_color_filter,
-            apply_fade_in_50frames
+        # Combine multiple transformations into a single FFmpeg command
+        # This reduces the number of times we need to decode/encode the video
+        sp = round(random.uniform(0.95, 1.05), 3)
+        noise_val = round(random.uniform(0.05, 0.15), 2) if random.random() < 0.5 else None
+        
+        # Build filter chain
+        filters = []
+        filters.append(f"setpts=PTS/{sp}")  # Speed change
+        if noise_val:
+            filters.append(f"noise=alls={noise_val}:allf=t+u")
+        
+        # Add random transformations (limit to 2 to reduce processing time)
+        possible_filters = [
+            lambda: f"eq=brightness={round(random.uniform(-0.05,0.05),3)}:contrast={round(random.uniform(0.95,1.05),3)}:saturation={round(random.uniform(0.95,1.05),3)}",
+            lambda: "hflip",
+            lambda: f"rotate={random.uniform(-2,2)*math.pi/180}:fillcolor=black",
         ]
-        num = random.choice([3,4])
-        selected = random.sample(transformations, num)
-
-        for i, transform in enumerate(selected, start=1):
-            if task:
-                task.update_state(state='PROCESSING', 
-                                meta={'status': f'Applying transformation {i}/{num}: {transform.__name__ if hasattr(transform,"__name__") else "custom"}...'})
-            
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-                tmp_out = tmp.name
-
-            print(f"\n--- Transformation {i}/{num}: {transform.__name__ if hasattr(transform,'__name__') else 'custom'} ---")
-            transform(current_input, tmp_out)
-            current_input = tmp_out
-
+        
+        selected_filters = random.sample(possible_filters, k=min(2, len(possible_filters)))
+        for filter_func in selected_filters:
+            filters.append(filter_func())
+        
+        # Build the complete filter string
+        video_filter = ','.join(filters)
+        
+        # Build audio filter
+        audio_filter = f"atempo={sp}"
+        
+        # Combine into a single FFmpeg command
+        cmd = [
+            "ffmpeg","-y","-nostdin",
+            "-i", input_video,
+            "-filter_complex", f"[0:v]{video_filter}[v];[0:a]{audio_filter}[a]",
+            "-map","[v]","-map","[a]",
+            "-c:v","libx264","-preset","ultrafast","-profile:v","high",
+            "-crf","28",
+            "-pix_fmt","yuv420p",
+            "-c:a","aac","-b:a","128k",
+            "-threads", "0",  # Use all available CPU threads
+            output_video
+        ]
+        
         if task:
-            task.update_state(state='PROCESSING', meta={'status': 'Finalizing video...'})
-            
-        print("\n--- Final Step: check_and_fix_even ---")
-        check_and_fix_even(current_input, output_video)
+            task.update_state(state='PROCESSING', meta={'status': 'Applying video transformations...'})
+        
+        subprocess.run(cmd, check=True)
+        
         print(f"[DONE] => {output_video}")
         
         # Verify the output file exists and is not empty
