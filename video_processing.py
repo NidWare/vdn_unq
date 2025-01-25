@@ -5,6 +5,7 @@ import math
 import json
 import tempfile
 import time
+import sys
 
 # Функции для работы с видеофайлами
 
@@ -434,15 +435,68 @@ def check_and_fix_even(input_video, output_video):
         ]
         subprocess.run(cmd, check=True)
 
+def compress_video(input_video, output_video, task=None):
+    """Compress video to reduce size before processing"""
+    if task:
+        task.update_state(state='PROCESSING', meta={'status': 'Compressing video...'})
+    
+    cmd = [
+        "ffmpeg", "-y", "-nostdin",
+        "-i", input_video,
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "35",
+        "-vf", "scale=min(1280\\,iw):min(720\\,ih):force_original_aspect_ratio=decrease",
+        "-c:a", "aac",
+        "-b:a", "96k",
+        "-ac", "2",
+        "-movflags", "+faststart",
+        output_video
+    ]
+    subprocess.run(cmd, check=True)
+
 def generate_unique_video(input_video, output_video, orientation='horizontal', task=None):
     try:
         if task:
             task.update_state(state='PROCESSING', meta={'status': 'Analyzing input video...'})
         
+        # Get input file size
+        input_size = os.path.getsize(input_video)
+        if input_size > 100 * 1024 * 1024:  # If larger than 100MB
+            if task:
+                task.update_state(state='PROCESSING', meta={'status': 'Input file too large, compressing...'})
+            
+            # Create temporary file for compressed video
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
+                compressed_input = tmp.name
+            
+            # Compress the input video first
+            compress_video(input_video, compressed_input, task)
+            input_video = compressed_input
+
+        # Detect platform and available hardware encoders
+        platform = sys.platform
+        hw_encoders = {
+            'darwin': 'h264_videotoolbox',  # macOS
+            'linux': 'h264_nvenc',          # Linux with NVIDIA GPU
+            'win32': 'h264_nvenc'           # Windows with NVIDIA GPU
+        }
+        
+        # Default to libx264 if no hardware encoder available
+        video_encoder = hw_encoders.get(platform, 'libx264')
+        
+        # Check if NVIDIA GPU is available on Linux/Windows
+        if platform in ['linux', 'win32']:
+            try:
+                subprocess.run(['nvidia-smi'], check=True, capture_output=True)
+            except:
+                video_encoder = 'libx264'  # Fall back to CPU if no NVIDIA GPU
+        
         # First, try to copy the video without re-encoding
         try:
             cmd = [
                 "ffmpeg", "-y", "-nostdin",
+                "-hwaccel", "auto",
                 "-i", input_video,
                 "-c:v", "copy",
                 "-c:a", "copy",
@@ -481,7 +535,7 @@ def generate_unique_video(input_video, output_video, orientation='horizontal', t
 
         if task:
             task.update_state(state='PROCESSING', 
-                            meta={'status': f'Processing {w}x{h} video, estimated {total_frames} frames...'})
+                            meta={'status': f'Processing {w}x{h} video using {video_encoder}, estimated {total_frames} frames...'})
 
         # Determine if we need to scale down
         scale_filter = ""
@@ -500,18 +554,33 @@ def generate_unique_video(input_video, output_video, orientation='horizontal', t
         video_filter = ','.join(filters)
         audio_filter = f"atempo={sp}"
 
-        # Optimized FFmpeg command
+        # Optimized FFmpeg command with hardware acceleration
         cmd = [
             "ffmpeg", "-y", "-nostdin",
             "-hwaccel", "auto",
             "-i", input_video,
             "-filter_complex", f"[0:v]{video_filter}[v];[0:a]{audio_filter}[a]",
             "-map", "[v]", "-map", "[a]",
-            "-c:v", "h264_videotoolbox" if sys.platform == "darwin" else "libx264",
-            "-preset", "ultrafast",
-            "-tune", "zerolatency",
-            "-profile:v", "baseline",
-            "-level", "3.0",
+            "-c:v", video_encoder,
+        ]
+
+        # Add encoder-specific options
+        if video_encoder == 'libx264':
+            cmd.extend([
+                "-preset", "ultrafast",
+                "-tune", "zerolatency",
+                "-profile:v", "high",
+                "-level", "4.1",
+            ])
+        elif video_encoder in ['h264_nvenc', 'h264_videotoolbox']:
+            cmd.extend([
+                "-preset", "p1",  # Fastest preset for NVENC
+                "-tune", "ll",    # Low latency tuning
+                "-profile:v", "high",
+            ])
+
+        # Common parameters
+        cmd.extend([
             "-crf", "35",
             "-maxrate", "2000k",
             "-bufsize", "4000k",
@@ -523,10 +592,10 @@ def generate_unique_video(input_video, output_video, orientation='horizontal', t
             "-movflags", "+faststart",
             "-threads", "0",
             "-g", "60",
-            "-vsync", "1",  # Force video sync
-            "-async", "1",  # Force audio sync
+            "-vsync", "1",
+            "-async", "1",
             output_video
-        ]
+        ])
 
         # Run FFmpeg with timeout
         process = subprocess.Popen(
@@ -734,3 +803,16 @@ def main_modified(input_dir, output_dir, num_variants=1, orientation='horizontal
     else:
         if task:
             task.update_state(state='SUCCESS', meta={'status': 'success', 'files': [os.path.basename(p) for p in successful_outputs]})
+
+if __name__ == "__main__":
+    input_dir = "./input"
+    output_dir = "./uploads"
+    
+    # Create directories if they don't exist
+    for directory in [input_dir, output_dir]:
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+            print(f"Created directory: {directory}")
+    
+    # Process videos
+    main_modified(input_dir, output_dir, num_variants=1, orientation='horizontal', task=None)
