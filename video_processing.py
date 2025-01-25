@@ -185,15 +185,23 @@ def apply_small_speed_change(input_video, output_video):
     sp = round(random.uniform(0.95, 1.05), 3)
     f_str = f"[0:v]setpts=PTS/{sp}[v];[0:a]atempo={sp}[a]"
     cmd = [
-        "ffmpeg","-y","-nostdin",
+        "ffmpeg", "-y", "-nostdin",
+        "-hwaccel", "auto",  # Enable hardware acceleration if available
         "-i", input_video,
         "-filter_complex", f_str,
-        "-map","[v]","-map","[a]",
-        "-c:v","libx264","-preset","ultrafast","-profile:v","high",
-        "-crf","28",
-        "-pix_fmt","yuv420p",
-        "-c:a","aac","-b:a","128k",
+        "-map", "[v]", "-map", "[a]",
+        "-c:v", "libx264", "-preset", "ultrafast",
+        "-tune", "fastdecode",  # Optimize for fast decoding
+        "-profile:v", "baseline",  # Use simpler profile for faster processing
+        "-level", "3.0",
+        "-crf", "30",  # Increase CRF for faster processing
+        "-maxrate", "2500k",  # Limit bitrate
+        "-bufsize", "5000k",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
         "-threads", "0",  # Use all available CPU threads
+        "-g", "60",  # Reduce keyframe interval
         output_video
     ]
     print(f"[Small Speed Change] => {sp}")
@@ -430,27 +438,33 @@ def generate_unique_video(input_video, output_video, orientation='horizontal', t
         if task:
             task.update_state(state='PROCESSING', meta={'status': 'Starting video processing...'})
         
+        # Get input video dimensions and reduce if too large
+        w, h = get_video_dimensions(input_video)
+        scale_filter = ""
+        if w > 1920 or h > 1080:
+            scale_filter = "scale=min(1920\\,iw):min(1080\\,ih):force_original_aspect_ratio=decrease,"
+        
         # Combine multiple transformations into a single FFmpeg command
-        # This reduces the number of times we need to decode/encode the video
         sp = round(random.uniform(0.95, 1.05), 3)
         noise_val = round(random.uniform(0.05, 0.15), 2) if random.random() < 0.5 else None
         
         # Build filter chain
         filters = []
+        if scale_filter:
+            filters.append(scale_filter.rstrip(','))
         filters.append(f"setpts=PTS/{sp}")  # Speed change
         if noise_val:
             filters.append(f"noise=alls={noise_val}:allf=t+u")
         
-        # Add random transformations (limit to 2 to reduce processing time)
+        # Add just one random transformation to minimize processing time
         possible_filters = [
             lambda: f"eq=brightness={round(random.uniform(-0.05,0.05),3)}:contrast={round(random.uniform(0.95,1.05),3)}:saturation={round(random.uniform(0.95,1.05),3)}",
             lambda: "hflip",
             lambda: f"rotate={random.uniform(-2,2)*math.pi/180}:fillcolor=black",
         ]
         
-        selected_filters = random.sample(possible_filters, k=min(2, len(possible_filters)))
-        for filter_func in selected_filters:
-            filters.append(filter_func())
+        selected_filter = random.choice(possible_filters)
+        filters.append(selected_filter())
         
         # Build the complete filter string
         video_filter = ','.join(filters)
@@ -458,17 +472,25 @@ def generate_unique_video(input_video, output_video, orientation='horizontal', t
         # Build audio filter
         audio_filter = f"atempo={sp}"
         
-        # Combine into a single FFmpeg command
+        # Combine into a single FFmpeg command with optimized settings
         cmd = [
-            "ffmpeg","-y","-nostdin",
+            "ffmpeg", "-y", "-nostdin",
+            "-hwaccel", "auto",  # Enable hardware acceleration if available
             "-i", input_video,
             "-filter_complex", f"[0:v]{video_filter}[v];[0:a]{audio_filter}[a]",
-            "-map","[v]","-map","[a]",
-            "-c:v","libx264","-preset","ultrafast","-profile:v","high",
-            "-crf","28",
-            "-pix_fmt","yuv420p",
-            "-c:a","aac","-b:a","128k",
+            "-map", "[v]", "-map", "[a]",
+            "-c:v", "libx264", "-preset", "ultrafast",
+            "-tune", "fastdecode",  # Optimize for fast decoding
+            "-profile:v", "baseline",  # Use simpler profile for faster processing
+            "-level", "3.0",
+            "-crf", "30",  # Increase CRF for faster processing
+            "-maxrate", "2500k",  # Limit bitrate
+            "-bufsize", "5000k",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "128k",
+            "-movflags", "+faststart",
             "-threads", "0",  # Use all available CPU threads
+            "-g", "60",  # Reduce keyframe interval
             output_video
         ]
         
