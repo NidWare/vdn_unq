@@ -15,8 +15,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY . .
 
-# Create directories for file uploads and output
-RUN mkdir -p uploads output
+# Create directories for file uploads and output with proper permissions
+RUN mkdir -p uploads output && \
+    chmod 777 uploads output
 
 # Expose port
 EXPOSE 5000
