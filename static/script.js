@@ -153,30 +153,73 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const formData = new FormData();
-        formData.append('video', currentFile);
-        formData.append('orientation', form.orientation.value);
-        formData.append('copies', form.copies.value);
+        submitButton.disabled = true;
+        showProgress();
+        hideError();
+
+        const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
+        const totalChunks = Math.ceil(currentFile.size / CHUNK_SIZE);
+        let uploadedChunks = 0;
 
         try {
-            submitButton.disabled = true;
-            showProgress();
-            hideError();
-
-            const response = await fetch('/upload', {
+            // First create a session for this upload
+            const sessionResponse = await fetch('/upload/start', {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    filename: currentFile.name,
+                    filesize: currentFile.size,
+                    orientation: form.orientation.value,
+                    copies: form.copies.value
+                })
             });
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'An error occurred during upload');
+            if (!sessionResponse.ok) {
+                throw new Error('Failed to start upload session');
             }
+
+            const { session_id } = await sessionResponse.json();
+
+            // Upload file in chunks
+            for (let start = 0; start < currentFile.size; start += CHUNK_SIZE) {
+                const chunk = currentFile.slice(start, start + CHUNK_SIZE);
+                const formData = new FormData();
+                formData.append('chunk', chunk);
+                formData.append('chunk_number', Math.floor(start / CHUNK_SIZE));
+                formData.append('total_chunks', totalChunks);
+
+                const response = await fetch(`/upload/chunk/${session_id}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to upload chunk');
+                }
+
+                uploadedChunks++;
+                const uploadProgress = (uploadedChunks / totalChunks) * 100;
+                progressBar.style.width = `${uploadProgress}%`;
+                progressText.textContent = `Uploading: ${Math.round(uploadProgress)}%`;
+            }
+
+            // Complete the upload
+            const completeResponse = await fetch(`/upload/complete/${session_id}`, {
+                method: 'POST'
+            });
+
+            if (!completeResponse.ok) {
+                throw new Error('Failed to complete upload');
+            }
+
+            const data = await completeResponse.json();
+            progressText.textContent = 'Processing video...';
 
             // Start polling for task status
             pollInterval = setInterval(() => {
-                pollTaskStatus(data.task_id, data.session_id);
+                pollTaskStatus(data.task_id, session_id);
             }, 2000);
 
         } catch (error) {

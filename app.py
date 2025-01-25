@@ -6,6 +6,8 @@ from werkzeug.utils import secure_filename
 import uuid
 from celery_app import process_video_task
 from datetime import datetime, timedelta
+import json
+import math
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -171,6 +173,118 @@ def download_file(session_id, filename):
         return response
 
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/upload/start', methods=['POST'])
+def start_upload():
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        filename = data.get('filename')
+        if not filename or not allowed_file(filename):
+            return jsonify({'error': 'Invalid file type. Only MP4 and MOV files are allowed'}), 400
+
+        # Create unique session ID and directories
+        session_id = str(uuid.uuid4())
+        session_input_dir = os.path.join(app.config['UPLOAD_FOLDER'], session_id)
+        session_output_dir = os.path.join(app.config['OUTPUT_FOLDER'], session_id)
+        
+        os.makedirs(session_input_dir, exist_ok=True)
+        os.makedirs(session_output_dir, exist_ok=True)
+
+        # Create temporary upload directory for chunks
+        upload_dir = os.path.join(session_input_dir, 'chunks')
+        os.makedirs(upload_dir, exist_ok=True)
+
+        # Store session info
+        session_info = {
+            'filename': secure_filename(filename),
+            'orientation': data.get('orientation', 'horizontal'),
+            'copies': int(data.get('copies', 1)),
+            'total_chunks': math.ceil(int(data.get('filesize', 0)) / (1024 * 1024))  # 1MB chunks
+        }
+
+        # Save session info
+        with open(os.path.join(session_input_dir, 'session_info.json'), 'w') as f:
+            json.dump(session_info, f)
+
+        return jsonify({'session_id': session_id})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/upload/chunk/<session_id>', methods=['POST'])
+def upload_chunk(session_id):
+    try:
+        if 'chunk' not in request.files:
+            return jsonify({'error': 'No chunk provided'}), 400
+
+        chunk = request.files['chunk']
+        chunk_number = int(request.form['chunk_number'])
+        
+        # Get session directory
+        session_input_dir = os.path.join(app.config['UPLOAD_FOLDER'], session_id)
+        if not os.path.exists(session_input_dir):
+            return jsonify({'error': 'Invalid session'}), 400
+
+        # Save chunk
+        chunks_dir = os.path.join(session_input_dir, 'chunks')
+        chunk_path = os.path.join(chunks_dir, f'chunk_{chunk_number}')
+        chunk.save(chunk_path)
+
+        return jsonify({'success': True})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/upload/complete/<session_id>', methods=['POST'])
+def complete_upload(session_id):
+    try:
+        session_input_dir = os.path.join(app.config['UPLOAD_FOLDER'], session_id)
+        session_output_dir = os.path.join(app.config['OUTPUT_FOLDER'], session_id)
+        chunks_dir = os.path.join(session_input_dir, 'chunks')
+
+        if not os.path.exists(session_input_dir) or not os.path.exists(chunks_dir):
+            return jsonify({'error': 'Invalid session'}), 400
+
+        # Load session info
+        with open(os.path.join(session_input_dir, 'session_info.json'), 'r') as f:
+            session_info = json.load(f)
+
+        # Combine chunks
+        output_path = os.path.join(session_input_dir, session_info['filename'])
+        with open(output_path, 'wb') as outfile:
+            chunk_number = 0
+            while True:
+                chunk_path = os.path.join(chunks_dir, f'chunk_{chunk_number}')
+                if not os.path.exists(chunk_path):
+                    break
+                with open(chunk_path, 'rb') as chunk_file:
+                    outfile.write(chunk_file.read())
+                chunk_number += 1
+
+        # Clean up chunks
+        shutil.rmtree(chunks_dir)
+
+        # Start async processing
+        task = process_video_task.delay(
+            session_input_dir, 
+            session_output_dir, 
+            session_info['copies'], 
+            session_info['orientation']
+        )
+
+        return jsonify({
+            'success': True,
+            'task_id': task.id
+        })
+
+    except Exception as e:
+        # Clean up on error
+        shutil.rmtree(session_input_dir, ignore_errors=True)
+        shutil.rmtree(session_output_dir, ignore_errors=True)
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
