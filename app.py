@@ -15,7 +15,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 app.config['MAX_CONTENT_LENGTH'] = 2048 * 1024 * 1024  # 2GB max file size
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['OUTPUT_FOLDER'] = 'output'
-app.config['FILE_RETENTION_HOURS'] = 4  # Files older than this will be deleted
+app.config['FILE_RETENTION_HOURS'] = 1  # Files older than this will be deleted
 
 # Ensure upload and output directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
