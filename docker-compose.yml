@@ -20,6 +20,7 @@ services:
       - ./output:/app/output
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONFAULTHANDLER=1
     depends_on:
       redis:
         condition: service_healthy
@@ -29,17 +30,22 @@ services:
 
   worker:
     build: .
-    command: celery -A celery_app.celery worker --loglevel=info
+    command: celery -A celery_app.celery worker --loglevel=INFO --concurrency=1
     volumes:
       - ./uploads:/app/uploads
       - ./output:/app/output
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONFAULTHANDLER=1
       - C_FORCE_ROOT=true
     depends_on:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
 
   redis:
     image: redis:7-alpine
