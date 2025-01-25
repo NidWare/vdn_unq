@@ -4,6 +4,7 @@ import random
 import math
 import json
 import tempfile
+import time
 
 # Функции для работы с видеофайлами
 
@@ -436,75 +437,154 @@ def check_and_fix_even(input_video, output_video):
 def generate_unique_video(input_video, output_video, orientation='horizontal', task=None):
     try:
         if task:
-            task.update_state(state='PROCESSING', meta={'status': 'Starting video processing...'})
+            task.update_state(state='PROCESSING', meta={'status': 'Analyzing input video...'})
         
-        # Get input video dimensions and reduce if too large
-        w, h = get_video_dimensions(input_video)
+        # First, try to copy the video without re-encoding
+        try:
+            cmd = [
+                "ffmpeg", "-y", "-nostdin",
+                "-i", input_video,
+                "-c:v", "copy",
+                "-c:a", "copy",
+                "-movflags", "+faststart",
+                output_video
+            ]
+            subprocess.run(cmd, check=True, capture_output=True)
+            print(f"[DONE] => {output_video} (copied without re-encoding)")
+            return
+        except:
+            print("Direct copy failed, falling back to re-encoding...")
+            if task:
+                task.update_state(state='PROCESSING', meta={'status': 'Direct copy failed, re-encoding...'})
+
+        # Get video info
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height,duration,r_frame_rate",
+            "-of", "json",
+            input_video
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        video_info = json.loads(result.stdout)
+        w = int(video_info['streams'][0]['width'])
+        h = int(video_info['streams'][0]['height'])
+        
+        # Calculate total frames
+        try:
+            fps_parts = video_info['streams'][0]['r_frame_rate'].split('/')
+            fps = float(fps_parts[0]) / float(fps_parts[1])
+            duration = float(video_info['streams'][0]['duration'])
+            total_frames = int(fps * duration)
+        except:
+            total_frames = 0
+
+        if task:
+            task.update_state(state='PROCESSING', 
+                            meta={'status': f'Processing {w}x{h} video, estimated {total_frames} frames...'})
+
+        # Determine if we need to scale down
         scale_filter = ""
-        if w > 1920 or h > 1080:
-            scale_filter = "scale=min(1920\\,iw):min(1080\\,ih):force_original_aspect_ratio=decrease,"
-        
-        # Combine multiple transformations into a single FFmpeg command
+        if w > 1280 or h > 720:
+            scale_filter = "scale=min(1280\\,iw):min(720\\,ih):force_original_aspect_ratio=decrease,"
+
+        # Apply minimal transformations
         sp = round(random.uniform(0.95, 1.05), 3)
-        noise_val = round(random.uniform(0.05, 0.15), 2) if random.random() < 0.5 else None
         
         # Build filter chain
         filters = []
         if scale_filter:
             filters.append(scale_filter.rstrip(','))
-        filters.append(f"setpts=PTS/{sp}")  # Speed change
-        if noise_val:
-            filters.append(f"noise=alls={noise_val}:allf=t+u")
+        filters.append(f"setpts=PTS/{sp}")
         
-        # Add just one random transformation to minimize processing time
-        possible_filters = [
-            lambda: f"eq=brightness={round(random.uniform(-0.05,0.05),3)}:contrast={round(random.uniform(0.95,1.05),3)}:saturation={round(random.uniform(0.95,1.05),3)}",
-            lambda: "hflip",
-            lambda: f"rotate={random.uniform(-2,2)*math.pi/180}:fillcolor=black",
-        ]
-        
-        selected_filter = random.choice(possible_filters)
-        filters.append(selected_filter())
-        
-        # Build the complete filter string
         video_filter = ','.join(filters)
-        
-        # Build audio filter
         audio_filter = f"atempo={sp}"
-        
-        # Combine into a single FFmpeg command with optimized settings
+
+        # Optimized FFmpeg command
         cmd = [
             "ffmpeg", "-y", "-nostdin",
-            "-hwaccel", "auto",  # Enable hardware acceleration if available
+            "-hwaccel", "auto",
             "-i", input_video,
             "-filter_complex", f"[0:v]{video_filter}[v];[0:a]{audio_filter}[a]",
             "-map", "[v]", "-map", "[a]",
-            "-c:v", "libx264", "-preset", "ultrafast",
-            "-tune", "fastdecode",  # Optimize for fast decoding
-            "-profile:v", "baseline",  # Use simpler profile for faster processing
+            "-c:v", "h264_videotoolbox" if sys.platform == "darwin" else "libx264",
+            "-preset", "ultrafast",
+            "-tune", "zerolatency",
+            "-profile:v", "baseline",
             "-level", "3.0",
-            "-crf", "30",  # Increase CRF for faster processing
-            "-maxrate", "2500k",  # Limit bitrate
-            "-bufsize", "5000k",
+            "-crf", "35",
+            "-maxrate", "2000k",
+            "-bufsize", "4000k",
             "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "128k",
+            "-c:a", "aac",
+            "-b:a", "96k",
+            "-ac", "2",
+            "-ar", "44100",
             "-movflags", "+faststart",
-            "-threads", "0",  # Use all available CPU threads
-            "-g", "60",  # Reduce keyframe interval
+            "-threads", "0",
+            "-g", "60",
+            "-vsync", "1",  # Force video sync
+            "-async", "1",  # Force audio sync
             output_video
         ]
+
+        # Run FFmpeg with timeout
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+
+        last_progress_time = time.time()
+        progress_timeout = 300  # 5 minutes timeout for progress
         
+        # Monitor progress
+        while True:
+            line = process.stderr.readline()
+            if not line and process.poll() is not None:
+                break
+                
+            if "frame=" in line:
+                try:
+                    current_time = time.time()
+                    frame = int(line.split("frame=")[1].split()[0])
+                    fps = float(line.split("fps=")[1].split()[0])
+                    time_str = line.split("time=")[1].split()[0]
+                    
+                    # Update last progress time
+                    last_progress_time = current_time
+                    
+                    if total_frames > 0:
+                        progress = (frame / total_frames) * 100
+                        status = f'Processing: {frame}/{total_frames} frames ({progress:.1f}%) @ {fps:.1f} fps'
+                    else:
+                        status = f'Processing: {frame} frames @ {fps:.1f} fps'
+                    
+                    if task:
+                        task.update_state(state='PROCESSING', meta={'status': status})
+                except Exception as e:
+                    print(f"Error parsing progress: {str(e)}")
+                    
+            # Check for timeout
+            if time.time() - last_progress_time > progress_timeout:
+                process.kill()
+                raise RuntimeError("Processing timeout - no progress for 5 minutes")
+
+        # Check process result
+        if process.wait() != 0:
+            error_output = process.stderr.read()
+            raise RuntimeError(f"FFmpeg failed: {error_output}")
+
         if task:
-            task.update_state(state='PROCESSING', meta={'status': 'Applying video transformations...'})
-        
-        subprocess.run(cmd, check=True)
-        
-        print(f"[DONE] => {output_video}")
-        
-        # Verify the output file exists and is not empty
+            task.update_state(state='PROCESSING', meta={'status': 'Verifying output...'})
+
+        # Verify the output
         if not os.path.exists(output_video) or os.path.getsize(output_video) == 0:
             raise RuntimeError("Generated file is missing or empty")
-            
+
+        print(f"[DONE] => {output_video}")
+
     except Exception as e:
         print(f"Error in generate_unique_video: {str(e)}")
         if task:
