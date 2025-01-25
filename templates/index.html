@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Processor</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-6">
+            <h1 class="text-3xl font-bold text-center mb-8">Video Processor</h1>
+
+            <!-- Upload Form -->
+            <form id="uploadForm" class="space-y-6">
+                <!-- File Upload -->
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-700">
+                        Upload Video (MP4 or MOV, max 2GB)
+                    </label>
+                    <div class="relative border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-500 transition-colors"
+                        id="dropZone">
+                        <input type="file" id="videoInput" accept=".mp4,.mov"
+                            class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                        <div class="space-y-1">
+                            <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none"
+                                viewBox="0 0 48 48">
+                                <path
+                                    d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            <div class="text-sm text-gray-600" id="fileNameDisplay">
+                                Drag and drop a video file here, or click to select
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Options -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-gray-700">
+                            Orientation
+                        </label>
+                        <select name="orientation"
+                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="horizontal">Horizontal (16:9)</option>
+                            <option value="vertical">Vertical (9:16)</option>
+                        </select>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-gray-700">
+                            Number of Copies
+                        </label>
+                        <select name="copies"
+                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit"
+                    class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    id="submitButton">
+                    Process Video
+                </button>
+            </form>
+
+            <!-- Progress -->
+            <div id="progressContainer" class="hidden mt-6 space-y-4">
+                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                    <div class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" id="progressBar"
+                        style="width: 0%"></div>
+                </div>
+                <p class="text-sm text-gray-600 text-center" id="progressText">Processing...</p>
+            </div>
+
+            <!-- Results -->
+            <div id="results" class="hidden mt-6 space-y-4">
+                <h2 class="text-xl font-semibold">Processed Videos</h2>
+                <div id="downloadLinks" class="space-y-2"></div>
+            </div>
+
+            <!-- Error Display -->
+            <div id="errorMessage" class="hidden mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+
+</html>

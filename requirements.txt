@@ -1,0 +1,7 @@
+flask==3.0.0
+python-telegram-bot==20.7
+werkzeug==3.0.1
+gunicorn==21.2.0
+celery==5.3.6
+redis==5.0.1
+flask-socketio==5.3.6 
