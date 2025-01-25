@@ -30,14 +30,18 @@ services:
 
   worker:
     build: .
-    command: celery -A celery_app.celery worker --loglevel=INFO --concurrency=1
+    command: celery -A celery_app.celery worker --loglevel=DEBUG --concurrency=1 --pool=solo
     volumes:
       - ./uploads:/app/uploads
       - ./output:/app/output
+      - /tmp:/tmp
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONFAULTHANDLER=1
       - C_FORCE_ROOT=true
+      - CELERY_TASK_ALWAYS_EAGER=False
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
     depends_on:
       redis:
         condition: service_healthy

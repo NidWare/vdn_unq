@@ -3,9 +3,17 @@ import os
 import shutil
 from video_processing import main_modified
 import logging
+import traceback
+import sys
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 logger = logging.getLogger(__name__)
 
 celery = Celery('tasks', 
@@ -33,10 +41,13 @@ celery.conf.update(
              max_retries=3,
              default_retry_delay=5,
              autoretry_for=(Exception,),
-             retry_backoff=True)
+             retry_backoff=True,
+             name='video_processing.process_video_task')
 def process_video_task(self, session_input_dir, session_output_dir, copies, orientation):
     try:
-        logger.info("[TASK] Starting video processing task")
+        logger.info(f"[TASK {self.request.id}] Starting video processing task")
+        logger.debug(f"Parameters: input_dir={session_input_dir}, output_dir={session_output_dir}, copies={copies}, orientation={orientation}")
+        
         # Initial state update
         self.update_state(state='PROCESSING', meta={'status': 'Starting video processing...'})
         
@@ -44,12 +55,12 @@ def process_video_task(self, session_input_dir, session_output_dir, copies, orie
         if os.path.exists(session_output_dir):
             shutil.rmtree(session_output_dir)
         os.makedirs(session_output_dir)
-        logger.info(f"[TASK] Created output directory: {session_output_dir}")
+        logger.info(f"[TASK {self.request.id}] Created output directory: {session_output_dir}")
         
         # Process video using original logic
-        logger.info("[TASK] Calling main_modified")
+        logger.info(f"[TASK {self.request.id}] Calling main_modified")
         main_modified(session_input_dir, session_output_dir, copies, orientation)
-        logger.info("[TASK] Finished main_modified")
+        logger.info(f"[TASK {self.request.id}] Finished main_modified")
         
         # Wait a moment to ensure all files are written
         import time
@@ -59,21 +70,22 @@ def process_video_task(self, session_input_dir, session_output_dir, copies, orie
         output_files = [f for f in os.listdir(session_output_dir) 
                        if os.path.isfile(os.path.join(session_output_dir, f))]
         
-        logger.info(f"[TASK] Found output files: {output_files}")
-        logger.info(f"[TASK] Output directory contents: {os.listdir(session_output_dir)}")
+        logger.info(f"[TASK {self.request.id}] Found output files: {output_files}")
+        logger.debug(f"[TASK {self.request.id}] Output directory contents: {os.listdir(session_output_dir)}")
         
         if not output_files:
-            logger.error("[TASK] No output files found - failing task")
+            error_msg = "No output files were generated"
+            logger.error(f"[TASK {self.request.id}] {error_msg}")
             self.update_state(
                 state=states.FAILURE,
                 meta={
-                    'status': 'No output files were generated',
-                    'error': 'No output files were generated'
+                    'status': error_msg,
+                    'error': error_msg
                 }
             )
             return {
                 'status': 'error',
-                'error': 'No output files were generated'
+                'error': error_msg
             }
 
         # Return success with the list of generated files
@@ -81,7 +93,7 @@ def process_video_task(self, session_input_dir, session_output_dir, copies, orie
             'status': 'success',
             'files': output_files
         }
-        logger.info(f"[TASK] Task completed successfully with result: {result}")
+        logger.info(f"[TASK {self.request.id}] Task completed successfully with result: {result}")
         self.update_state(
             state=states.SUCCESS,
             meta=result
@@ -89,8 +101,10 @@ def process_video_task(self, session_input_dir, session_output_dir, copies, orie
         return result
         
     except Exception as e:
-        logger.exception(f"[TASK] Error in process_video_task: {str(e)}")
-        error_msg = str(e)
+        error_msg = f"Error in process_video_task: {str(e)}"
+        logger.error(f"[TASK {self.request.id}] {error_msg}")
+        logger.error(f"[TASK {self.request.id}] Traceback: {traceback.format_exc()}")
+        
         self.update_state(
             state=states.FAILURE,
             meta={
