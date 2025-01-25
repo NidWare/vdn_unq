@@ -424,52 +424,75 @@ def check_and_fix_even(input_video, output_video):
         ]
         subprocess.run(cmd, check=True)
 
-def generate_unique_video(input_video, output_video, orientation='horizontal'):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-        tmp_speed = tmp.name
-    apply_small_speed_change(input_video, tmp_speed)
-
-    current_input = tmp_speed
-
-    if random.random() < 0.5:
+def generate_unique_video(input_video, output_video, orientation='horizontal', task=None):
+    try:
+        if task:
+            task.update_state(state='PROCESSING', meta={'status': 'Starting video speed change...'})
+        
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-            tmp_noise = tmp.name
-        apply_random_noise(current_input, tmp_noise)
-        current_input = tmp_noise
+            tmp_speed = tmp.name
+        apply_small_speed_change(input_video, tmp_speed)
 
-    transformations = [
-        container_rewrap,
-        add_silent_subtitle,
-        add_dummy_chapter,
-        apply_random_metadata,
-        lambda inp, out: apply_resolution_change(inp, out, orientation),
-        apply_frame_rate_change,
-        apply_audio_codec_change,
-        apply_audio_sample_rate_change,
-        apply_small_rotation,
-        apply_mirror,
-        lambda inp, out: apply_padding(inp, out, orientation),
-        apply_text_overlay,
-        apply_pixelate,
-        apply_small_color_filter,
-        apply_fade_in_50frames
-    ]
-    num = random.choice([3,4])
-    selected = random.sample(transformations, num)
+        current_input = tmp_speed
 
-    for i, transform in enumerate(selected, start=1):
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-            tmp_out = tmp.name
+        if random.random() < 0.5:
+            if task:
+                task.update_state(state='PROCESSING', meta={'status': 'Applying random noise...'})
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+                tmp_noise = tmp.name
+            apply_random_noise(current_input, tmp_noise)
+            current_input = tmp_noise
 
-        print(f"\n--- Transformation {i}/{num}: {transform.__name__ if hasattr(transform,'__name__') else 'custom'} ---")
-        transform(current_input, tmp_out)
-        current_input = tmp_out
+        transformations = [
+            container_rewrap,
+            add_silent_subtitle,
+            add_dummy_chapter,
+            apply_random_metadata,
+            lambda inp, out: apply_resolution_change(inp, out, orientation),
+            apply_frame_rate_change,
+            apply_audio_codec_change,
+            apply_audio_sample_rate_change,
+            apply_small_rotation,
+            apply_mirror,
+            lambda inp, out: apply_padding(inp, out, orientation),
+            apply_text_overlay,
+            apply_pixelate,
+            apply_small_color_filter,
+            apply_fade_in_50frames
+        ]
+        num = random.choice([3,4])
+        selected = random.sample(transformations, num)
 
-    print("\n--- Final Step: check_and_fix_even ---")
-    check_and_fix_even(current_input, output_video)
-    print(f"[DONE] => {output_video}")
+        for i, transform in enumerate(selected, start=1):
+            if task:
+                task.update_state(state='PROCESSING', 
+                                meta={'status': f'Applying transformation {i}/{num}: {transform.__name__ if hasattr(transform,"__name__") else "custom"}...'})
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+                tmp_out = tmp.name
 
-def main_modified(input_dir, output_dir, num_variants=1, orientation='horizontal'):
+            print(f"\n--- Transformation {i}/{num}: {transform.__name__ if hasattr(transform,'__name__') else 'custom'} ---")
+            transform(current_input, tmp_out)
+            current_input = tmp_out
+
+        if task:
+            task.update_state(state='PROCESSING', meta={'status': 'Finalizing video...'})
+            
+        print("\n--- Final Step: check_and_fix_even ---")
+        check_and_fix_even(current_input, output_video)
+        print(f"[DONE] => {output_video}")
+        
+        # Verify the output file exists and is not empty
+        if not os.path.exists(output_video) or os.path.getsize(output_video) == 0:
+            raise RuntimeError("Generated file is missing or empty")
+            
+    except Exception as e:
+        print(f"Error in generate_unique_video: {str(e)}")
+        if task:
+            task.update_state(state='FAILURE', meta={'status': str(e), 'error': str(e)})
+        raise
+
+def main_modified(input_dir, output_dir, num_variants=1, orientation='horizontal', task=None):
     print(f"\nStarting main_modified with parameters:")
     print(f"input_dir: {input_dir}")
     print(f"output_dir: {output_dir}")
@@ -498,6 +521,8 @@ def main_modified(input_dir, output_dir, num_variants=1, orientation='horizontal
     
     if not input_files:
         print("No valid input files found")
+        if task:
+            task.update_state(state='FAILURE', meta={'status': 'No valid input files found', 'error': 'No valid input files found'})
         return
 
     print(f"Found input files: {input_files}")
@@ -513,6 +538,8 @@ def main_modified(input_dir, output_dir, num_variants=1, orientation='horizontal
         except Exception as e:
             print(f"Error getting video dimensions: {str(e)}")
             print(f"Skipping invalid file: {fname}")
+            if task:
+                task.update_state(state='FAILURE', meta={'status': f'Invalid video file: {str(e)}', 'error': str(e)})
             continue
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -541,7 +568,7 @@ def main_modified(input_dir, output_dir, num_variants=1, orientation='horizontal
 
                 print(f"\n[PROCESS] Variant {variant + 1}/{num_variants}: {fname} => {out_name}")
                 try:
-                    generate_unique_video(clean_input, out_path, orientation)
+                    generate_unique_video(clean_input, out_path, orientation, task)
                     if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
                         print(f"Successfully generated => {out_path}")
                         successful_outputs.append(out_path)
@@ -561,8 +588,12 @@ def main_modified(input_dir, output_dir, num_variants=1, orientation='horizontal
                                 successful_outputs.append(out_path)
                             else:
                                 print(f"Failed to save copy: file is missing or empty")
+                                if task:
+                                    task.update_state(state='FAILURE', meta={'status': 'Failed to save video', 'error': 'Generated file is missing or empty'})
                         except Exception as e:
                             print(f"Failed to save copy: {str(e)}")
+                            if task:
+                                task.update_state(state='FAILURE', meta={'status': f'Failed to save video: {str(e)}', 'error': str(e)})
                 except Exception as e:
                     print(f"Error processing variant: {str(e)}")
                     try:
@@ -579,8 +610,12 @@ def main_modified(input_dir, output_dir, num_variants=1, orientation='horizontal
                             successful_outputs.append(out_path)
                         else:
                             print(f"Failed to save copy: file is missing or empty")
+                            if task:
+                                task.update_state(state='FAILURE', meta={'status': 'Failed to save video', 'error': 'Generated file is missing or empty'})
                     except Exception as e:
                         print(f"Failed to save copy: {str(e)}")
+                        if task:
+                            task.update_state(state='FAILURE', meta={'status': f'Failed to save video: {str(e)}', 'error': str(e)})
 
     print("\nFinished main_modified processing")
     print(f"Successfully processed {len(successful_outputs)} files")
@@ -590,3 +625,13 @@ def main_modified(input_dir, output_dir, num_variants=1, orientation='horizontal
     for out_path in successful_outputs:
         if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
             print(f"Warning: Output file {out_path} is missing or empty")
+            if task:
+                task.update_state(state='FAILURE', meta={'status': 'Some output files are missing or empty', 'error': 'Generated files are missing or empty'})
+            return
+            
+    if not successful_outputs:
+        if task:
+            task.update_state(state='FAILURE', meta={'status': 'No files were successfully processed', 'error': 'No files were successfully processed'})
+    else:
+        if task:
+            task.update_state(state='SUCCESS', meta={'status': 'success', 'files': [os.path.basename(p) for p in successful_outputs]})

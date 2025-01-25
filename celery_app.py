@@ -59,7 +59,7 @@ def process_video_task(self, session_input_dir, session_output_dir, copies, orie
         
         # Process video using original logic
         logger.info(f"[TASK {self.request.id}] Calling main_modified")
-        main_modified(session_input_dir, session_output_dir, copies, orientation)
+        main_modified(session_input_dir, session_output_dir, copies, orientation, task=self)
         logger.info(f"[TASK {self.request.id}] Finished main_modified")
         
         # Wait a moment to ensure all files are written
