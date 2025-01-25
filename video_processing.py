@@ -172,10 +172,10 @@ def apply_random_noise(input_video, output_video):
         "ffmpeg","-y","-nostdin",
         "-i", input_video,
         "-filter:v", nf,
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
-        "-c:a","aac","-b:a","256k",
+        "-c:a","aac","-b:a","128k",
         output_video
     ]
     print(f"[Random Noise] => alls={noise_val}")
@@ -189,10 +189,10 @@ def apply_small_speed_change(input_video, output_video):
         "-i", input_video,
         "-filter_complex", f_str,
         "-map","[v]","-map","[a]",
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
-        "-c:a","aac","-b:a","256k",
+        "-c:a","aac","-b:a","128k",
         output_video
     ]
     print(f"[Small Speed Change] => {sp}")
@@ -209,10 +209,10 @@ def apply_resolution_change(input_video, output_video, orientation='horizontal')
         "ffmpeg","-y","-nostdin",
         "-i", input_video,
         "-vf", vf_str,
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
-        "-c:a","aac","-b:a","256k",
+        "-c:a","aac","-b:a","128k",
         output_video
     ]
     subprocess.run(cmd, check=True)
@@ -223,10 +223,10 @@ def apply_frame_rate_change(input_video, output_video):
         "ffmpeg","-y","-nostdin",
         "-i", input_video,
         "-r", str(fr),
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
-        "-c:a","aac","-b:a","256k",
+        "-c:a","aac","-b:a","128k",
         output_video
     ]
     subprocess.run(cmd, check=True)
@@ -236,11 +236,11 @@ def apply_audio_codec_change(input_video, output_video):
     cmd = [
         "ffmpeg","-y","-nostdin",
         "-i", input_video,
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
         "-c:a", ac,
-        "-b:a","256k","-ac","2","-ar","44100",
+        "-b:a","128k","-ac","2","-ar","44100",
         output_video
     ]
     subprocess.run(cmd, check=True)
@@ -250,11 +250,11 @@ def apply_audio_sample_rate_change(input_video, output_video):
     cmd = [
         "ffmpeg","-y","-nostdin",
         "-i", input_video,
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
         "-c:a","aac","-ar", str(sr),
-        "-b:a","256k","-ac","2",
+        "-b:a","128k","-ac","2",
         output_video
     ]
     subprocess.run(cmd, check=True)
@@ -267,10 +267,10 @@ def apply_small_rotation(input_video, output_video):
         "ffmpeg","-y","-nostdin",
         "-i", input_video,
         "-vf", vf,
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
-        "-c:a","aac","-b:a","256k",
+        "-c:a","aac","-b:a","128k",
         output_video
     ]
     subprocess.run(cmd, check=True)
@@ -281,10 +281,10 @@ def apply_flip(input_video, output_video):
         "ffmpeg","-y","-nostdin",
         "-i", input_video,
         "-vf", flip_type,
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
-        "-c:a","aac","-b:a","256k",
+        "-c:a","aac","-b:a","128k",
         output_video
     ]
     subprocess.run(cmd, check=True)
@@ -294,10 +294,10 @@ def apply_mirror(input_video, output_video):
         "ffmpeg","-y","-nostdin",
         "-i", input_video,
         "-vf","hflip",
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
-        "-c:a","aac","-b:a","256k",
+        "-c:a","aac","-b:a","128k",
         output_video
     ]
     subprocess.run(cmd, check=True)
@@ -324,10 +324,10 @@ def apply_padding(input_video, output_video, orientation='horizontal'):
         "ffmpeg","-y","-nostdin",
         "-i", input_video,
         "-vf", vf_str,
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
-        "-c:a","aac","-b:a","256k",
+        "-c:a","aac","-b:a","128k",
         output_video
     ]
     subprocess.run(cmd, check=True)
@@ -341,10 +341,10 @@ def apply_text_overlay(input_video, output_video):
         "ffmpeg","-y","-nostdin",
         "-i", input_video,
         "-vf", draw,
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
-        "-c:a","aac","-b:a","256k",
+        "-c:a","aac","-b:a","128k",
         output_video
     ]
     subprocess.run(cmd, check=True)
@@ -359,10 +359,10 @@ def apply_pixelate(input_video, output_video):
         "ffmpeg","-y","-nostdin",
         "-i", input_video,
         "-vf", pf,
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
-        "-c:a","aac","-b:a","256k",
+        "-c:a","aac","-b:a","128k",
         output_video
     ]
     subprocess.run(cmd, check=True)
@@ -376,10 +376,10 @@ def apply_small_color_filter(input_video, output_video):
         "ffmpeg","-y","-nostdin",
         "-i", input_video,
         "-vf", eq_str,
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
-        "-c:a","aac","-b:a","256k",
+        "-c:a","aac","-b:a","128k",
         output_video
     ]
     subprocess.run(cmd, check=True)
@@ -390,10 +390,10 @@ def apply_fade_in_50frames(input_video, output_video):
         "ffmpeg","-y","-nostdin",
         "-i", input_video,
         "-vf", fade_filter,
-        "-c:v","libx264","-preset","medium","-profile:v","high",
-        "-crf","20",
+        "-c:v","libx264","-preset","veryfast","-profile:v","high",
+        "-crf","26",
         "-pix_fmt","yuv420p",
-        "-c:a","aac","-b:a","256k",
+        "-c:a","aac","-b:a","128k",
         output_video
     ]
     subprocess.run(cmd, check=True)
