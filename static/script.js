@@ -94,37 +94,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function pollTaskStatus(taskId, sessionId) {
         try {
+            console.log(`Polling task status for task ${taskId}`);
             const response = await fetch(`/task/${taskId}`);
             const data = await response.json();
+            console.log('Task status response:', data);
 
             // Update progress text for any state
             if (data.status) {
                 progressText.textContent = data.status;
+                console.log('Updated progress text:', data.status);
             }
 
             if (data.state === 'SUCCESS') {
+                console.log('Task succeeded:', data);
                 clearInterval(pollInterval);
                 hideProgress();
                 if (data.result && data.result.status === 'success' && data.result.files) {
+                    console.log('Showing results with files:', data.result.files);
                     showResults({
                         session_id: sessionId,
                         files: data.result.files
                     });
                 } else {
+                    console.log('Task success but no valid result:', data);
                     showError(data.result?.error || 'Processing failed');
                 }
                 submitButton.disabled = false;
             } else if (data.state === 'FAILURE') {
+                console.log('Task failed:', data);
                 clearInterval(pollInterval);
                 hideProgress();
                 showError(data.error || data.status || 'Processing failed');
                 submitButton.disabled = false;
             } else if (data.state === 'PROCESSING') {
+                console.log('Task processing');
                 // Show progress bar at 90% during processing
                 progressBar.style.width = '90%';
             } else if (data.state === 'PENDING') {
+                console.log('Task pending');
                 // Show progress bar at 10% while pending
                 progressBar.style.width = '10%';
+            } else {
+                console.log('Unknown task state:', data.state);
             }
         } catch (error) {
             console.error('Error polling task status:', error);

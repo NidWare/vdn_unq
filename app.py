@@ -99,29 +99,45 @@ def upload_file():
 
 @app.route('/task/<task_id>')
 def get_task_status(task_id):
-    task = process_video_task.AsyncResult(task_id)
-    
-    response = {
-        'state': task.state,
-    }
-    
-    if task.state == 'PENDING':
-        response['status'] = 'Task is pending...'
-    elif task.state == 'PROCESSING':
-        response['status'] = task.info.get('status', 'Processing video...')
-    elif task.state == 'SUCCESS':
-        if task.info.get('status') == 'error':
-            response['state'] = 'FAILURE'
-            response['error'] = task.info.get('error', 'Unknown error occurred')
+    try:
+        task = process_video_task.AsyncResult(task_id)
+        print(f"[STATUS] Task {task_id} state: {task.state}")
+        
+        response = {
+            'state': task.state,
+        }
+        
+        if task.state == 'PENDING':
+            response['status'] = 'Task is pending...'
+        elif task.state == 'PROCESSING':
+            response['status'] = task.info.get('status', 'Processing video...')
+        elif task.state == 'SUCCESS':
+            print(f"[STATUS] Task {task_id} success info: {task.info}")
+            if task.info is None:
+                response['state'] = 'FAILURE'
+                response['error'] = 'Task completed but returned no result'
+            elif isinstance(task.info, dict) and task.info.get('status') == 'error':
+                response['state'] = 'FAILURE'
+                response['error'] = task.info.get('error', 'Unknown error occurred')
+            else:
+                response['result'] = task.info
+        elif task.state == 'FAILURE':
+            print(f"[STATUS] Task {task_id} failure info: {task.info}")
+            response['status'] = str(task.info.get('status', 'Task failed'))
+            response['error'] = str(task.info.get('error', task.info))
         else:
-            response['result'] = task.info
-    elif task.state == 'FAILURE':
-        response['status'] = str(task.info.get('status', 'Task failed'))
-        response['error'] = str(task.info.get('error', task.info))
-    else:
-        response['status'] = str(task.info.get('status', 'Unknown state'))
-    
-    return jsonify(response)
+            print(f"[STATUS] Task {task_id} unknown state info: {task.info}")
+            response['status'] = str(task.info.get('status', 'Unknown state'))
+        
+        print(f"[STATUS] Sending response: {response}")
+        return jsonify(response)
+        
+    except Exception as e:
+        print(f"[STATUS] Error getting task status: {str(e)}")
+        return jsonify({
+            'state': 'FAILURE',
+            'error': f'Error getting task status: {str(e)}'
+        })
 
 @app.route('/download/<session_id>/<filename>')
 def download_file(session_id, filename):

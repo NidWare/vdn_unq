@@ -21,6 +21,7 @@ celery.conf.update(
 @celery.task(bind=True)
 def process_video_task(self, session_input_dir, session_output_dir, copies, orientation):
     try:
+        print("[TASK] Starting video processing task")
         # Initial state update
         self.update_state(state='PROCESSING', meta={'status': 'Starting video processing...'})
         
@@ -28,9 +29,12 @@ def process_video_task(self, session_input_dir, session_output_dir, copies, orie
         if os.path.exists(session_output_dir):
             shutil.rmtree(session_output_dir)
         os.makedirs(session_output_dir)
+        print(f"[TASK] Created output directory: {session_output_dir}")
         
         # Process video using original logic
+        print("[TASK] Calling main_modified")
         main_modified(session_input_dir, session_output_dir, copies, orientation)
+        print("[TASK] Finished main_modified")
         
         # Wait a moment to ensure all files are written
         import time
@@ -40,10 +44,11 @@ def process_video_task(self, session_input_dir, session_output_dir, copies, orie
         output_files = [f for f in os.listdir(session_output_dir) 
                        if os.path.isfile(os.path.join(session_output_dir, f))]
         
-        print(f"Found output files: {output_files}")
-        print(f"Output directory contents: {os.listdir(session_output_dir)}")
+        print(f"[TASK] Found output files: {output_files}")
+        print(f"[TASK] Output directory contents: {os.listdir(session_output_dir)}")
         
         if not output_files:
+            print("[TASK] No output files found - failing task")
             self.update_state(
                 state=states.FAILURE,
                 meta={
@@ -61,6 +66,7 @@ def process_video_task(self, session_input_dir, session_output_dir, copies, orie
             'status': 'success',
             'files': output_files
         }
+        print(f"[TASK] Task completed successfully with result: {result}")
         self.update_state(
             state=states.SUCCESS,
             meta=result
@@ -68,7 +74,7 @@ def process_video_task(self, session_input_dir, session_output_dir, copies, orie
         return result
         
     except Exception as e:
-        print(f"Error in process_video_task: {str(e)}")
+        print(f"[TASK] Error in process_video_task: {str(e)}")
         error_msg = str(e)
         self.update_state(
             state=states.FAILURE,
