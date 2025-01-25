@@ -97,29 +97,39 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`/task/${taskId}`);
             const data = await response.json();
 
+            // Update progress text for any state
+            if (data.status) {
+                progressText.textContent = data.status;
+            }
+
             if (data.state === 'SUCCESS') {
                 clearInterval(pollInterval);
                 hideProgress();
-                if (data.result.status === 'success') {
+                if (data.result && data.result.status === 'success' && data.result.files) {
                     showResults({
                         session_id: sessionId,
                         files: data.result.files
                     });
                 } else {
-                    showError(data.result.error || 'Processing failed');
-                    submitButton.disabled = false;
+                    showError(data.result?.error || 'Processing failed');
                 }
+                submitButton.disabled = false;
             } else if (data.state === 'FAILURE') {
                 clearInterval(pollInterval);
                 hideProgress();
-                showError('Processing failed');
+                showError(data.error || data.status || 'Processing failed');
                 submitButton.disabled = false;
-            } else {
-                // Update progress text for pending/processing state
-                progressText.textContent = data.status || 'Processing...';
+            } else if (data.state === 'PROCESSING') {
+                // Show progress bar at 90% during processing
+                progressBar.style.width = '90%';
+            } else if (data.state === 'PENDING') {
+                // Show progress bar at 10% while pending
+                progressBar.style.width = '10%';
             }
         } catch (error) {
             console.error('Error polling task status:', error);
+            // Don't clear interval on network errors, keep trying
+            progressText.textContent = 'Checking status...';
         }
     }
 

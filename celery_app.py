@@ -21,7 +21,8 @@ celery.conf.update(
 @celery.task(bind=True)
 def process_video_task(self, session_input_dir, session_output_dir, copies, orientation):
     try:
-        self.update_state(state='PROCESSING', meta={'status': 'Processing video...'})
+        # Initial state update
+        self.update_state(state='PROCESSING', meta={'status': 'Starting video processing...'})
         
         # Ensure output directory exists and is empty
         if os.path.exists(session_output_dir):
@@ -45,7 +46,10 @@ def process_video_task(self, session_input_dir, session_output_dir, copies, orie
         if not output_files:
             self.update_state(
                 state=states.FAILURE,
-                meta={'status': 'No output files were generated'}
+                meta={
+                    'status': 'No output files were generated',
+                    'error': 'No output files were generated'
+                }
             )
             return {
                 'status': 'error',
@@ -53,21 +57,27 @@ def process_video_task(self, session_input_dir, session_output_dir, copies, orie
             }
 
         # Return success with the list of generated files
-        self.update_state(
-            state=states.SUCCESS,
-            meta={'status': 'Processing complete'}
-        )
-        return {
+        result = {
             'status': 'success',
             'files': output_files
         }
+        self.update_state(
+            state=states.SUCCESS,
+            meta=result
+        )
+        return result
+        
     except Exception as e:
         print(f"Error in process_video_task: {str(e)}")
+        error_msg = str(e)
         self.update_state(
             state=states.FAILURE,
-            meta={'status': str(e)}
+            meta={
+                'status': error_msg,
+                'error': error_msg
+            }
         )
         return {
             'status': 'error',
-            'error': str(e)
+            'error': error_msg
         } 
